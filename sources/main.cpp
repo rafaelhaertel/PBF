@@ -2,6 +2,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <vector>
+#include <iostream>
+
+#define PI 3.1415926536f
+#define EPSILON  0.001f
+#define XMAX 13
+#define YMAX 20
+#define ZMAX 13
+#define ITER 2
+#define NPART 1000
+#define H 1.5
+#define REST 10000.0f
+#define DT 0.01f
+#define POW_H_9 (float)(H*H*H*H*H*H*H*H*H) // h^9
+#define POW_H_6 (float)(H*H*H*H*H*H) // h^6
 
 // Include GLEW
 #include <GL/glew.h>
@@ -35,9 +49,234 @@ void WindowSizeCallBack(GLFWwindow *pWindow, int nWidth, int nHeight) {
 	TwWindowSize(g_nWidth, g_nHeight);
 }
 
+class Particle
+{
+   public:
+      glm::vec3 position;   // Posição Inicial
+      glm::vec3 pred_position;  // Posição Prevista durante o passo
+      glm::vec3 velocity;
+	  glm::vec3 delta_p;
+	  float mass;
+	  float lambda;
+	  float rho;
+	  float C;
+	  std::vector<Particle> neighbors;
+};
+
+std::vector<Particle> particles;
+std::vector<float> g_grid;
+
+void initializeParticles () {
+	particles.reserve(NPART);
+	srand((unsigned int) 1);
+
+
+		/*Particle p;
+		p.position.x = 0;
+		p.position.y = -YMAX;
+		p.position.z = 0;
+
+		p.velocity = glm::vec3(0.0f);
+		p.mass = 1;
+		p.delta_p = glm::vec3(0.0f);
+		p.rho = 0.0;
+		p.C = 1;
+		p.pred_position = glm::vec3(0.0f);
+		p.lambda = 0.0f;
+		
+		particles.push_back(p);
+
+		p.position.x = 0;
+		p.position.y = -YMAX+15;
+		p.position.z = 0;
+
+		p.velocity = glm::vec3(0.0f);
+		p.mass = 1;
+		p.delta_p = glm::vec3(0.0f);
+		p.rho = 0.0;
+		p.C = 1;
+		p.pred_position = glm::vec3(0.0f);
+		p.lambda = 0.0f;
+		
+		particles.push_back(p);*/
+
+	for (int i = 0 ; i < NPART ; i++){
+		Particle p;
+		p.position.x = (float)rand()/(float)(RAND_MAX/XMAX);
+		p.position.y = (float)rand()/(float)(RAND_MAX/YMAX);
+		p.position.z = (float)rand()/(float)(RAND_MAX/ZMAX);;
+
+		p.velocity = glm::vec3(0.0f);
+		p.mass = 1;
+		p.delta_p = glm::vec3(0.0f);
+		p.rho = 0.0;
+		p.C = 1;
+		p.pred_position = glm::vec3(0.0f);
+		p.lambda = 0.0f;
+		
+		particles.push_back(p);
+	}
+
+
+};
+
+float wPoly6(glm::vec3 r, float h) {
+	return 315.0 / (64.0 * PI * POW_H_9) * (h*h - glm::dot(r,r)) * (h*h - glm::dot(r,r)) * (h*h - glm::dot(r,r));
+}
+
+glm::vec3 wSpiky(glm::vec3 r, float h) {;
+	/*float hr_term = h - glm::length(r);
+	float gradient_magnitude = 45.0f / (PI * POW_H_6) * hr_term * hr_term;
+	float div = (glm::length(r) + EPSILON);*/
+	glm::vec3 teste = (45.0f / (PI * POW_H_6)) * (((h - glm::length(r)) * (h - glm::length(r))) * (r/(glm::length(r)+EPSILON)));
+	return teste;
+	/*return r = 45.0 / (3.1415 * POW_H_6) * ((h - glm::length(r)) *  (h - glm::length(r))) * (r/(glm::length(r)+EPSILON));*/
+}
+
+float DensityEstimator(Particle p) {
+	float rho = 0.0;
+
+	for (int j = 0 ; j < p.neighbors.size() ; j++) {
+		glm::vec3 r = p.position - p.neighbors[j].position;
+		rho = rho + p.neighbors[j].mass * wPoly6(r, H);
+	}
+	return rho;
+}
+
+float NablaCSquaredSumFunction(Particle p) {
+
+	std::vector<glm::vec3> NablaC;
+
+	if (p.neighbors.size() > 0) {
+		for (int j = 0 ; j < p.neighbors.size() ; j++) {													//for k != i
+			glm::vec3 r = p.position - p.neighbors[j].position;
+			glm::vec3 nablac= -wSpiky(r, H) / REST;
+			NablaC.push_back(nablac);
+		}
+
+		NablaC.push_back(glm::vec3(0.0f));																	//for k = i
+		int last = NablaC.size()-1; 
+		for (int j = 0 ; j < p.neighbors.size() ; j++) {
+			glm::vec3 r = p.position - p.neighbors[j].position;
+			NablaC[last] = NablaC[last] + wSpiky(r, H);
+		}
+		NablaC[last] = NablaC[last] / REST;
+
+		float res = 0;
+		for (int k = 0 ; k < NablaC.size() ; k++) {
+			res = res + length(NablaC[k]) * length(NablaC[k]);
+		}
+		return res;
+	}
+	else
+		return  0.0f;
+}
+
+glm::vec3 CalculateDp(Particle p) {
+	glm::vec3 res = glm::vec3(0.0f);
+	float k = 0.1;
+	float d_q = 0.1*H;
+	glm::vec3 poly_dq =  d_q * glm::vec3(1.0f) + p.position;
+	for (int j = 0 ; j < p.neighbors.size() ; j++) {
+		glm::vec3 r = p.position - p.neighbors[j].position;
+		float scorr = -k * ((wPoly6(r, H))/wPoly6(poly_dq, H));
+		scorr = scorr * scorr * scorr * scorr;
+		res = res + (p.lambda + p.neighbors[j].lambda) * wSpiky(r, H);
+	}
+
+	res = res / REST;
+	return res;
+}
+
+void Algorithm() {
+
+	std::vector<Particle> predict_p = particles;
+	glm::vec3 gravity = glm::vec3(0.0, -9.8, 0.0);
+
+	for (int i = 0; i < NPART ; i++) {
+		predict_p[i].velocity = particles[i].velocity + DT * gravity;
+		predict_p[i].position = particles[i].position + DT * predict_p[i].velocity;
+	}
+
+	for (int i = 0 ; i < NPART ; i++) {
+		for (int j = 0 ; j < NPART ; j++) {
+			int alloc = 0;
+			if(i != j) {
+				glm::vec3 r = predict_p[i].position - predict_p[j].position;
+				if(glm::length(r) <= H) {
+					predict_p[i].neighbors.push_back(predict_p[j]);
+				}
+			}
+		}
+	}
+
+	int iter = 0;
+
+	while(iter < ITER) {
+		for (int i = 0 ; i < NPART ; i++) {
+			predict_p[i].rho = DensityEstimator(predict_p[i]);
+			predict_p[i].C = predict_p[i].rho / REST - 1;
+			float sumNabla = NablaCSquaredSumFunction(predict_p[i]);
+			predict_p[i].lambda = - predict_p[i].C / (sumNabla + EPSILON);
+		}
+
+		for (int i = 0; i < NPART ; i++) {
+			predict_p[i].delta_p = CalculateDp(predict_p[i]);
+			
+			if( predict_p[i].position.z < -ZMAX){
+				predict_p[i].position.z = -ZMAX+0.0001f;
+			}
+			if( predict_p[i].position.z > ZMAX){
+				predict_p[i].position.z = ZMAX-0.0001f;
+			}
+			if( predict_p[i].position.y < -YMAX){
+				predict_p[i].position.y = -YMAX+0.0001f;
+			}
+			if( predict_p[i].position.y > YMAX){
+				predict_p[i].position.y = YMAX-0.0001f;
+			}
+			if( predict_p[i].position.x < -XMAX){
+				predict_p[i].position.x = -XMAX+0.0001f;
+				
+			}
+			if( predict_p[i].position.x > XMAX){
+				predict_p[i].position.x = XMAX-0.0001f;
+				
+			}
+		}
+
+		for (int i = 0 ; i < NPART ; i++) {
+			predict_p[i].position = predict_p[i].position + predict_p[i].delta_p;
+		}
+
+		iter++;
+	}
+
+	for (int i = 0 ; i < NPART ; i++) {
+		predict_p[i].velocity = (1/DT) * (predict_p[i].position - particles[i].position);
+		predict_p[i].neighbors.clear();
+	}
+
+	particles = predict_p;
+}
+
+void BuildGrid() {
+	for(int i=-XMAX;i<=XMAX;i++)
+	{
+		g_grid.push_back(i); g_grid.push_back(-YMAX); g_grid.push_back(-XMAX);
+		g_grid.push_back(i); g_grid.push_back(-YMAX); g_grid.push_back(XMAX);
+		g_grid.push_back(-XMAX); g_grid.push_back(-YMAX); g_grid.push_back(i);
+		g_grid.push_back(XMAX); g_grid.push_back(-YMAX); g_grid.push_back(i);
+	}
+}
+
+
+
+
 int main(void)
 {
 	int nUseMouse = 0;
+	initializeParticles();
 
 	// Initialise GLFW
 	if (!glfwInit())
@@ -111,24 +350,28 @@ int main(void)
 	glBindVertexArray(VertexArrayID);
 
 	// Create and compile our GLSL program from the shaders
-	GLuint programID = LoadShaders("shaders/StandardShading.vertexshader", "shaders/StandardShading.fragmentshader");
+	GLuint standardProgramID = LoadShaders("shaders/StandardShading.vertexshader", "shaders/StandardShading.fragmentshader");
 
-	// Get a handle for our "MVP" uniform
-	GLuint MatrixID      = glGetUniformLocation(programID, "MVP");
-	GLuint ViewMatrixID  = glGetUniformLocation(programID, "V");
-	GLuint ModelMatrixID = glGetUniformLocation(programID, "M");
+	GLuint linesProgramID = LoadShaders( "shaders/SimpleVertexShader.vertexshader", "shaders/SimpleFragmentShader.fragmentshader" );
+	BuildGrid();
+
+	GLuint vertexbuffergrid;
+	glGenBuffers(1, &vertexbuffergrid);
+	glBindBuffer(GL_ARRAY_BUFFER, vertexbuffergrid);
+	glBufferData(GL_ARRAY_BUFFER, g_grid.size() * sizeof(float), &g_grid[0], GL_STATIC_DRAW);
+
 
 	// Load the texture
-	GLuint Texture = loadDDS("mesh/uvmap.DDS");
+	//GLuint Texture = loadDDS("mesh/uvmap.DDS");
 
 	// Get a handle for our "myTextureSampler" uniform
-	GLuint TextureID = glGetUniformLocation(programID, "myTextureSampler");
+	//GLuint TextureID = glGetUniformLocation(standardProgramID, "myTextureSampler");
 
 	// Read our .obj file
 	std::vector<glm::vec3> vertices;
 	std::vector<glm::vec2> uvs;
 	std::vector<glm::vec3> normals;
-	bool res = loadOBJ("mesh/suzanne.obj", vertices, uvs, normals);
+	bool res = loadOBJ("mesh/esfera.obj", vertices, uvs, normals);
 
 	std::vector<unsigned short> indices;
 	std::vector<glm::vec3> indexed_vertices;
@@ -143,10 +386,10 @@ int main(void)
 	glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
 	glBufferData(GL_ARRAY_BUFFER, indexed_vertices.size() * sizeof(glm::vec3), &indexed_vertices[0], GL_STATIC_DRAW);
 
-	GLuint uvbuffer;
+	/*GLuint uvbuffer;
 	glGenBuffers(1, &uvbuffer);
 	glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
-	glBufferData(GL_ARRAY_BUFFER, indexed_uvs.size() * sizeof(glm::vec2), &indexed_uvs[0], GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, indexed_uvs.size() * sizeof(glm::vec2), &indexed_uvs[0], GL_STATIC_DRAW);*/
 
 	GLuint normalbuffer;
 	glGenBuffers(1, &normalbuffer);
@@ -160,14 +403,15 @@ int main(void)
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned short), &indices[0], GL_STATIC_DRAW);
 
 	// Get a handle for our "LightPosition" uniform
-	glUseProgram(programID);
-	GLuint LightID = glGetUniformLocation(programID, "LightPosition_worldspace");
+	glUseProgram(standardProgramID);
+
+	GLuint LightID = glGetUniformLocation(standardProgramID, "LightPosition_worldspace");
 
 	// For speed computation
 	double lastTime = glfwGetTime();
 	int nbFrames    = 0;
 
-	do{
+	do {
         check_gl_error();
 
         //use the control key to free the mouse
@@ -189,30 +433,51 @@ int main(void)
 		// Clear the screen
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		// Use our shader
-		glUseProgram(programID);
-
 		// Compute the MVP matrix from keyboard and mouse input
 		computeMatricesFromInputs(nUseMouse, g_nWidth, g_nHeight);
 		glm::mat4 ProjectionMatrix = getProjectionMatrix();
 		glm::mat4 ViewMatrix       = getViewMatrix();
-		glm::mat4 ModelMatrix      = glm::mat4(1.0);
-		glm::mat4 MVP              = ProjectionMatrix * ViewMatrix * ModelMatrix;
 
-		// Send our transformation to the currently bound shader,
-		// in the "MVP" uniform
+		// Use our shader
+		glUseProgram(linesProgramID);
+
+		GLuint MatrixID				= glGetUniformLocation(linesProgramID, "MVP");
+		glm::mat4 MVP				= ProjectionMatrix * ViewMatrix;
 		glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
-		glUniformMatrix4fv(ModelMatrixID, 1, GL_FALSE, &ModelMatrix[0][0]);
-		glUniformMatrix4fv(ViewMatrixID, 1, GL_FALSE, &ViewMatrix[0][0]);
 
-		glm::vec3 lightPos = glm::vec3(4, 4, 4);
+		glEnableVertexAttribArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, vertexbuffergrid);
+		glVertexAttribPointer(
+			0,                  // attribute
+			3,                  // size
+			GL_FLOAT,           // type
+			GL_FALSE,           // normalized?
+			0,                  // stride
+			(void*)0            // array buffer offset
+			);
+
+		glLineWidth(3.f);
+		
+		glDrawArrays(GL_LINES, 0, g_grid.size()/3); // 3 indices starting at 0 -> 1 triangle
+
+		glDisableVertexAttribArray(0);
+
+		check_gl_error();
+
+		glUseProgram(standardProgramID);
+		MatrixID				 = glGetUniformLocation(standardProgramID, "MVP");
+		GLuint ViewMatrixID		 = glGetUniformLocation(standardProgramID, "V");
+		GLuint ModelMatrixID	 = glGetUniformLocation(standardProgramID, "M");
+
+
+		glm::vec3 lightPos = glm::vec3(0, 20, 0);
 		glUniform3f(LightID, lightPos.x, lightPos.y, lightPos.z);
 
 		// Bind our texture in Texture Unit 0
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, Texture);
-		// Set our "myTextureSampler" sampler to user Texture Unit 0
-		glUniform1i(TextureID, 0);
+		//glActiveTexture(GL_TEXTURE0);
+		//glBindTexture(GL_TEXTURE_2D, Texture);
+		//// Set our "myTextureSampler" sampler to user Texture Unit 0
+		//glUniform1i(TextureID, 0);
 
 		// 1rst attribute buffer : vertices
 		glEnableVertexAttribArray(0);
@@ -227,16 +492,16 @@ int main(void)
 			);
 
 		// 2nd attribute buffer : UVs
-		glEnableVertexAttribArray(1);
-		glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
-		glVertexAttribPointer(
-			1,                                // attribute
-			2,                                // size
-			GL_FLOAT,                         // type
-			GL_FALSE,                         // normalized?
-			0,                                // stride
-			(void*)0                          // array buffer offset
-			);
+		//glEnableVertexAttribArray(1);
+		//glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
+		//glVertexAttribPointer(
+		//	1,                                // attribute
+		//	2,                                // size
+		//	GL_FLOAT,                         // type
+		//	GL_FALSE,                         // normalized?
+		//	0,                                // stride
+		//	(void*)0                          // array buffer offset
+		//	);
 
 		// 3rd attribute buffer : normals
 		glEnableVertexAttribArray(2);
@@ -252,17 +517,46 @@ int main(void)
 
 		// Index buffer
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, elementbuffer);
+		
+		glUniformMatrix4fv(ViewMatrixID, 1, GL_FALSE, &ViewMatrix[0][0]);
+	
+		glm::mat4 ModelMatrix      = glm::mat4(1.0f); //Usar posição aleatória
+		ModelMatrix[0][0]		   = 1.5f; //Escala do modelo (x)
+		ModelMatrix[1][1]		   = 1.5f; //Escala do modelo (y)
+		ModelMatrix[2][2]		   = 1.5f; //Escala do modelo (z)
 
-		// Draw the triangles !
-		glDrawElements(
-			GL_TRIANGLES,        // mode
-			indices.size(),      // count
-			GL_UNSIGNED_SHORT,   // type
-			(void*)0             // element array buffer offset
-			);
+		//simulação
+		
+		Algorithm();
+		
+		//Render
+		for(int teste = 0 ; teste < particles.size() ; teste++) {
+		//for
+			
+			ModelMatrix[3][0]		   = particles[teste].position.x; //posição x
+			ModelMatrix[3][1]		   = particles[teste].position.y; //posição y
+			ModelMatrix[3][2]		   = particles[teste].position.z; //posição 
+
+			glm::mat4 MVP              = ProjectionMatrix * ViewMatrix * ModelMatrix;
+
+			// Send our transformation to the currently bound shader,
+			// in the "MVP" uniform
+			glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
+			glUniformMatrix4fv(ModelMatrixID, 1, GL_FALSE, &ModelMatrix[0][0]);
+
+
+			// Draw the triangles !
+			glDrawElements(
+				GL_TRIANGLES,        // mode
+				indices.size(),      // count
+				GL_UNSIGNED_SHORT,   // type
+				(void*)0             // element array buffer offset
+				);
+		//endfor
+		}
 
 		glDisableVertexAttribArray(0);
-		glDisableVertexAttribArray(1);
+		// glDisableVertexAttribArray(1); Canal das texturas
 		glDisableVertexAttribArray(2);
 
 		// Draw tweak bars
@@ -278,11 +572,13 @@ int main(void)
 
 	// Cleanup VBO and shader
 	glDeleteBuffers(1, &vertexbuffer);
-	glDeleteBuffers(1, &uvbuffer);
+	glDeleteBuffers(1, &vertexbuffergrid);
+	//glDeleteBuffers(1, &uvbuffer);
 	glDeleteBuffers(1, &normalbuffer);
 	glDeleteBuffers(1, &elementbuffer);
-	glDeleteProgram(programID);
-	glDeleteTextures(1, &Texture);
+	glDeleteProgram(standardProgramID);
+	glDeleteProgram(linesProgramID);
+	//glDeleteTextures(1, &Texture);
 	glDeleteVertexArrays(1, &VertexArrayID);
 
 	// Terminate AntTweakBar and GLFW

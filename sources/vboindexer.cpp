@@ -76,7 +76,7 @@ void indexVBO_slow(
 
 struct PackedVertex{
 	glm::vec3 position;
-	glm::vec2 uv;
+	// glm::vec2 uv;
 	glm::vec3 normal;
 	bool operator<(const PackedVertex that) const{
 		return memcmp((void*)this, (void*)&that, sizeof(PackedVertex))>0;
@@ -112,8 +112,8 @@ void indexVBO(
 	// For each input vertex
 	for ( unsigned int i=0; i<in_vertices.size(); i++ ){
 
-		PackedVertex packed = {in_vertices[i], in_uvs[i], in_normals[i]};
-		
+		//PackedVertex packed = {in_vertices[i], in_uvs[i], in_normals[i]};
+		PackedVertex packed = {in_vertices[i], in_normals[i]};
 
 		// Try to find a similar vertex in out_XXXX
 		unsigned short index;
@@ -123,7 +123,7 @@ void indexVBO(
 			out_indices.push_back( index );
 		}else{ // If not, it needs to be added in the output data.
 			out_vertices.push_back( in_vertices[i]);
-			out_uvs     .push_back( in_uvs[i]);
+			// out_uvs     .push_back( in_uvs[i]);
 			out_normals .push_back( in_normals[i]);
 			unsigned short newindex = (unsigned short)out_vertices.size() - 1;
 			out_indices .push_back( newindex );
