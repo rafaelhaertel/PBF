@@ -3,19 +3,15 @@
 #include <stdlib.h>
 #include <vector>
 #include <iostream>
+#include <time.h>
 
 #define PI 3.1415926536f
 #define EPSILON  0.001f
-#define XMAX 13
-#define YMAX 20
-#define ZMAX 13
-#define ITER 2
-#define NPART 1000
+#define ITER 4
+#define NPART 500
 #define H 1.5
 #define REST 10000.0f
 #define DT 0.01f
-#define POW_H_9 (float)(H*H*H*H*H*H*H*H*H) // h^9
-#define POW_H_6 (float)(H*H*H*H*H*H) // h^6
 
 // Include GLEW
 #include <GL/glew.h>
@@ -65,46 +61,28 @@ class Particle
 
 std::vector<Particle> particles;
 std::vector<float> g_grid;
+float g_xmax = 13;
+float g_ymax = 20;
+float g_zmax = 13;
+float g_zmin = -13;
+float g_h = 1.5;
+float POW_H_9 =(g_h*g_h*g_h*g_h*g_h*g_h*g_h*g_h*g_h); // h^9
+float POW_H_6 =(g_h*g_h*g_h*g_h*g_h*g_h); // h^6
+float wall = 10;
+time_t g_initTime = time(0);
+float rotatey = 0;
+float rotatex = 0;
+float rotatez = 0;
 
 void initializeParticles () {
 	particles.reserve(NPART);
 	srand((unsigned int) 1);
 
-
-		/*Particle p;
-		p.position.x = 0;
-		p.position.y = -YMAX;
-		p.position.z = 0;
-
-		p.velocity = glm::vec3(0.0f);
-		p.mass = 1;
-		p.delta_p = glm::vec3(0.0f);
-		p.rho = 0.0;
-		p.C = 1;
-		p.pred_position = glm::vec3(0.0f);
-		p.lambda = 0.0f;
-		
-		particles.push_back(p);
-
-		p.position.x = 0;
-		p.position.y = -YMAX+15;
-		p.position.z = 0;
-
-		p.velocity = glm::vec3(0.0f);
-		p.mass = 1;
-		p.delta_p = glm::vec3(0.0f);
-		p.rho = 0.0;
-		p.C = 1;
-		p.pred_position = glm::vec3(0.0f);
-		p.lambda = 0.0f;
-		
-		particles.push_back(p);*/
-
 	for (int i = 0 ; i < NPART ; i++){
 		Particle p;
-		p.position.x = (float)rand()/(float)(RAND_MAX/XMAX);
-		p.position.y = (float)rand()/(float)(RAND_MAX/YMAX);
-		p.position.z = (float)rand()/(float)(RAND_MAX/ZMAX);;
+		p.position.x = (float)rand()/(float)(RAND_MAX/g_xmax);
+		p.position.y = (float)rand()/(float)(RAND_MAX/g_ymax);
+		p.position.z = (float)rand()/(float)(RAND_MAX/g_zmax);;
 
 		p.velocity = glm::vec3(0.0f);
 		p.mass = 1;
@@ -138,7 +116,7 @@ float DensityEstimator(Particle p) {
 
 	for (int j = 0 ; j < p.neighbors.size() ; j++) {
 		glm::vec3 r = p.position - p.neighbors[j].position;
-		rho = rho + p.neighbors[j].mass * wPoly6(r, H);
+		rho = rho + p.neighbors[j].mass * wPoly6(r, g_h);
 	}
 	return rho;
 }
@@ -150,7 +128,7 @@ float NablaCSquaredSumFunction(Particle p) {
 	if (p.neighbors.size() > 0) {
 		for (int j = 0 ; j < p.neighbors.size() ; j++) {													//for k != i
 			glm::vec3 r = p.position - p.neighbors[j].position;
-			glm::vec3 nablac= -wSpiky(r, H) / REST;
+			glm::vec3 nablac= -wSpiky(r, g_h) / REST;
 			NablaC.push_back(nablac);
 		}
 
@@ -158,7 +136,7 @@ float NablaCSquaredSumFunction(Particle p) {
 		int last = NablaC.size()-1; 
 		for (int j = 0 ; j < p.neighbors.size() ; j++) {
 			glm::vec3 r = p.position - p.neighbors[j].position;
-			NablaC[last] = NablaC[last] + wSpiky(r, H);
+			NablaC[last] = NablaC[last] + wSpiky(r, g_h);
 		}
 		NablaC[last] = NablaC[last] / REST;
 
@@ -175,13 +153,13 @@ float NablaCSquaredSumFunction(Particle p) {
 glm::vec3 CalculateDp(Particle p) {
 	glm::vec3 res = glm::vec3(0.0f);
 	float k = 0.1;
-	float d_q = 0.1*H;
+	float d_q = 0.1*g_h;
 	glm::vec3 poly_dq =  d_q * glm::vec3(1.0f) + p.position;
 	for (int j = 0 ; j < p.neighbors.size() ; j++) {
 		glm::vec3 r = p.position - p.neighbors[j].position;
-		float scorr = -k * ((wPoly6(r, H))/wPoly6(poly_dq, H));
+		float scorr = -k * ((wPoly6(r, g_h))/wPoly6(poly_dq, g_h));
 		scorr = scorr * scorr * scorr * scorr;
-		res = res + (p.lambda + p.neighbors[j].lambda) * wSpiky(r, H);
+		res = res + (p.lambda + p.neighbors[j].lambda + scorr) * wSpiky(r, g_h);
 	}
 
 	res = res / REST;
@@ -193,6 +171,22 @@ void Algorithm() {
 	std::vector<Particle> predict_p = particles;
 	glm::vec3 gravity = glm::vec3(0.0, -9.8, 0.0);
 
+	time_t nowTime = time(0);
+
+	/*if((difftime(nowTime, g_initTime) > 15) && (wall <= 13.1) ) {
+		if(g_zmax > 10)
+			g_zmax = g_zmax - 0.05;
+		else {
+			wall = 14;
+		}
+	}
+
+	if(wall >= 14) {
+		g_zmax = g_zmax + 0.05;
+		if (g_zmax > 13.1)
+			wall = 10;
+	}*/
+
 	for (int i = 0; i < NPART ; i++) {
 		predict_p[i].velocity = particles[i].velocity + DT * gravity;
 		predict_p[i].position = particles[i].position + DT * predict_p[i].velocity;
@@ -203,7 +197,7 @@ void Algorithm() {
 			int alloc = 0;
 			if(i != j) {
 				glm::vec3 r = predict_p[i].position - predict_p[j].position;
-				if(glm::length(r) <= H) {
+				if(glm::length(r) <= g_h) {
 					predict_p[i].neighbors.push_back(predict_p[j]);
 				}
 			}
@@ -223,24 +217,24 @@ void Algorithm() {
 		for (int i = 0; i < NPART ; i++) {
 			predict_p[i].delta_p = CalculateDp(predict_p[i]);
 			
-			if( predict_p[i].position.z < -ZMAX){
-				predict_p[i].position.z = -ZMAX+0.0001f;
+			if( predict_p[i].position.z < g_zmin){
+				predict_p[i].position.z = g_zmin+0.0001f;
 			}
-			if( predict_p[i].position.z > ZMAX){
-				predict_p[i].position.z = ZMAX-0.0001f;
+			if( predict_p[i].position.z > g_zmax){
+				predict_p[i].position.z = g_zmax-0.0001f;
 			}
-			if( predict_p[i].position.y < -YMAX){
-				predict_p[i].position.y = -YMAX+0.0001f;
+			if( predict_p[i].position.y < -g_ymax){
+				predict_p[i].position.y = -g_ymax+0.0001f;
 			}
-			if( predict_p[i].position.y > YMAX){
-				predict_p[i].position.y = YMAX-0.0001f;
+			if( predict_p[i].position.y > g_ymax){
+				predict_p[i].position.y = g_ymax-0.0001f;
 			}
-			if( predict_p[i].position.x < -XMAX){
-				predict_p[i].position.x = -XMAX+0.0001f;
+			if( predict_p[i].position.x < -g_xmax){
+				predict_p[i].position.x = -g_xmax+0.0001f;
 				
 			}
-			if( predict_p[i].position.x > XMAX){
-				predict_p[i].position.x = XMAX-0.0001f;
+			if( predict_p[i].position.x > g_xmax){
+				predict_p[i].position.x = g_xmax-0.0001f;
 				
 			}
 		}
@@ -252,6 +246,8 @@ void Algorithm() {
 		iter++;
 	}
 
+	//g_xmax = g_xmax - 0.1;
+
 	for (int i = 0 ; i < NPART ; i++) {
 		predict_p[i].velocity = (1/DT) * (predict_p[i].position - particles[i].position);
 		predict_p[i].neighbors.clear();
@@ -261,12 +257,12 @@ void Algorithm() {
 }
 
 void BuildGrid() {
-	for(int i=-XMAX;i<=XMAX;i++)
+	for(int i=-g_xmax;i<=g_xmax;i++)
 	{
-		g_grid.push_back(i); g_grid.push_back(-YMAX); g_grid.push_back(-XMAX);
-		g_grid.push_back(i); g_grid.push_back(-YMAX); g_grid.push_back(XMAX);
-		g_grid.push_back(-XMAX); g_grid.push_back(-YMAX); g_grid.push_back(i);
-		g_grid.push_back(XMAX); g_grid.push_back(-YMAX); g_grid.push_back(i);
+		g_grid.push_back(i); g_grid.push_back(-g_ymax); g_grid.push_back(-g_xmax);
+		g_grid.push_back(i); g_grid.push_back(-g_ymax); g_grid.push_back(g_xmax);
+		g_grid.push_back(-g_xmax); g_grid.push_back(-g_ymax); g_grid.push_back(i);
+		g_grid.push_back(g_xmax); g_grid.push_back(-g_ymax); g_grid.push_back(i);
 	}
 }
 
@@ -329,6 +325,11 @@ int main(void)
 	// Add 'bgColor' to 'bar': it is a modifable variable of type TW_TYPE_COLOR3F (3 floats color)
 	vec3 oColor(0.0f);
 	TwAddVarRW(g_pToolBar, "bgColor", TW_TYPE_COLOR3F, &oColor[0], " label='Background color' ");
+	TwAddVarRW(g_pToolBar, "g_h", TW_TYPE_FLOAT, &g_h, " label='H radius' min=1.5 max=5 step=0.01 keyIncr=h keyDecr=H help='Rotation speed (turns/second)' ");
+	TwAddVarRW(g_pToolBar, "rotatey", TW_TYPE_FLOAT, &rotatey, " label='rotation y of wall' min=-360 max=360 step=1.0 keyIncr=r keyDecr=R help='Rotation speed (turns/second)' ");
+	TwAddVarRW(g_pToolBar, "rotatex", TW_TYPE_FLOAT, &rotatex, " label='rotation x of wall' min=-360 max=360 step=1.0 keyIncr=r keyDecr=R help='Rotation speed (turns/second)' ");
+	TwAddVarRW(g_pToolBar, "rotatez", TW_TYPE_FLOAT, &rotatez, " label='rotation y of wall' min=-360 max=360 step=1.0 keyIncr=r keyDecr=R help='Rotation speed (turns/second)' ");
+	TwAddVarRW(g_pToolBar, "g_zmin", TW_TYPE_FLOAT, &g_zmin, " label='position z of wall' min=-13 max=13 step=0.05 keyIncr=r keyDecr=R help='Rotation speed (turns/second)' ");
 
 	// Ensure we can capture the escape key being pressed below
 	glfwSetInputMode(g_pWindow, GLFW_STICKY_KEYS, GL_TRUE);
@@ -351,7 +352,7 @@ int main(void)
 
 	// Create and compile our GLSL program from the shaders
 	GLuint standardProgramID = LoadShaders("shaders/StandardShading.vertexshader", "shaders/StandardShading.fragmentshader");
-
+	GLuint wallProgramID = LoadShaders("shaders/wallShading.vertexshader", "shaders/wallShading.fragmentshader");
 	GLuint linesProgramID = LoadShaders( "shaders/SimpleVertexShader.vertexshader", "shaders/SimpleFragmentShader.fragmentshader" );
 	BuildGrid();
 
@@ -385,6 +386,36 @@ int main(void)
 	glGenBuffers(1, &vertexbuffer);
 	glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
 	glBufferData(GL_ARRAY_BUFFER, indexed_vertices.size() * sizeof(glm::vec3), &indexed_vertices[0], GL_STATIC_DRAW);
+
+	//paredes
+
+	std::vector<glm::vec3> wall_vertices;
+	std::vector<glm::vec2> wall_uvs;
+	std::vector<glm::vec3> wall_normals;
+	bool wallres = loadOBJ("mesh/wall.obj", wall_vertices, wall_uvs, wall_normals);
+
+	std::vector<unsigned short> wall_indices;
+	std::vector<glm::vec3> wall_indexed_vertices;
+	std::vector<glm::vec2> wall_indexed_uvs;
+	std::vector<glm::vec3> wall_indexed_normals;
+	indexVBO(wall_vertices, wall_uvs, wall_normals, wall_indices, wall_indexed_vertices, wall_indexed_uvs, wall_indexed_normals);
+
+	// Load it into a VBO
+
+	GLuint wallbuffer;
+	glGenBuffers(1, &wallbuffer);
+	glBindBuffer(GL_ARRAY_BUFFER, wallbuffer);
+	glBufferData(GL_ARRAY_BUFFER, wall_indexed_vertices.size() * sizeof(glm::vec3), &wall_indexed_vertices[0], GL_STATIC_DRAW);
+
+	GLuint wallnormalbuffer;
+	glGenBuffers(1, &wallnormalbuffer);
+	glBindBuffer(GL_ARRAY_BUFFER, wallnormalbuffer);
+	glBufferData(GL_ARRAY_BUFFER, wall_indexed_normals.size() * sizeof(glm::vec3), &wall_indexed_normals[0], GL_STATIC_DRAW);
+
+	GLuint wallelementbuffer;
+	glGenBuffers(1, &wallelementbuffer);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, wallelementbuffer);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, wall_indices.size() * sizeof(unsigned short), &wall_indices[0], GL_STATIC_DRAW);
 
 	/*GLuint uvbuffer;
 	glGenBuffers(1, &uvbuffer);
@@ -449,7 +480,7 @@ int main(void)
 		glBindBuffer(GL_ARRAY_BUFFER, vertexbuffergrid);
 		glVertexAttribPointer(
 			0,                  // attribute
-			3,                  // size
+			2,                  // size
 			GL_FLOAT,           // type
 			GL_FALSE,           // normalized?
 			0,                  // stride
@@ -490,7 +521,6 @@ int main(void)
 			0,                  // stride
 			(void*)0            // array buffer offset
 			);
-
 		// 2nd attribute buffer : UVs
 		//glEnableVertexAttribArray(1);
 		//glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
@@ -554,6 +584,91 @@ int main(void)
 				);
 		//endfor
 		}
+
+		glUseProgram(wallProgramID);
+		MatrixID				 = glGetUniformLocation(standardProgramID, "MVP");
+		ViewMatrixID			 = glGetUniformLocation(standardProgramID, "V");
+		ModelMatrixID			 = glGetUniformLocation(standardProgramID, "M");
+
+		// Bind our texture in Texture Unit 0
+		//glActiveTexture(GL_TEXTURE0);
+		//glBindTexture(GL_TEXTURE_2D, Texture);
+		//// Set our "myTextureSampler" sampler to user Texture Unit 0
+		//glUniform1i(TextureID, 0);
+
+		// 1rst attribute buffer : vertices
+		glEnableVertexAttribArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, wallbuffer);
+		glVertexAttribPointer(
+			0,                  // attribute
+			3,                  // size
+			GL_FLOAT,           // type
+			GL_FALSE,           // normalized?
+			0,                  // stride
+			(void*)0            // array buffer offset
+			);
+		// 2nd attribute buffer : UVs
+		//glEnableVertexAttribArray(1);
+		//glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
+		//glVertexAttribPointer(
+		//	1,                                // attribute
+		//	2,                                // size
+		//	GL_FLOAT,                         // type
+		//	GL_FALSE,                         // normalized?
+		//	0,                                // stride
+		//	(void*)0                          // array buffer offset
+		//	);
+
+		// 3rd attribute buffer : normals
+		glEnableVertexAttribArray(2);
+		glBindBuffer(GL_ARRAY_BUFFER, wallnormalbuffer);
+		glVertexAttribPointer(
+			2,                                // attribute
+			3,                                // size
+			GL_FLOAT,                         // type
+			GL_FALSE,                         // normalized?
+			0,                                // stride
+			(void*)0                          // array buffer offset
+			);
+
+		// Index buffer
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, wallelementbuffer);
+		
+		glUniformMatrix4fv(ViewMatrixID, 1, GL_FALSE, &ViewMatrix[0][0]);
+	
+		ModelMatrix				   = glm::mat4(1.0f); //Usar posição aleatória
+		ModelMatrix[0][0]		   = 15*2; //Escala do modelo (x)
+		ModelMatrix[1][1]		   = g_ymax*2; //Escala do modelo (y)
+		ModelMatrix[2][2]		   = 0; //Escala do modelo (z)
+		
+		//Render
+			
+		ModelMatrix[3][0]		   = -g_xmax; //posição x
+		ModelMatrix[3][1]		   = -g_ymax;//posição y
+		ModelMatrix[3][2]		   = g_zmin;//posição z
+
+			
+
+		ModelMatrix = glm::rotate(ModelMatrix, rotatex, glm::vec3(1, 0, 0));
+		ModelMatrix = glm::rotate(ModelMatrix, rotatey, glm::vec3(0, 1, 0));
+		ModelMatrix = glm::rotate(ModelMatrix, rotatez, glm::vec3(0, 0, 1));
+
+		MVP						   = ProjectionMatrix * ViewMatrix * ModelMatrix;
+
+		// Send our transformation to the currently bound shader,
+		// in the "MVP" uniform
+		glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
+		glUniformMatrix4fv(ModelMatrixID, 1, GL_FALSE, &ModelMatrix[0][0]);
+
+
+		// Draw the triangles !
+		glDrawElements(
+			GL_TRIANGLES,				// mode
+			wall_indices.size(),		// count
+			GL_UNSIGNED_SHORT,			// type
+			(void*)0					// element array buffer offset
+				);
+		//endfor
 
 		glDisableVertexAttribArray(0);
 		// glDisableVertexAttribArray(1); Canal das texturas
