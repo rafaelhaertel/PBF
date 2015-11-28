@@ -7,20 +7,16 @@
 
 #define PI 3.1415f
 #define EPSILON  600.0f
-#define ITER 2
+#define ITER 1
 #define NPART 1000
 #define H 0.1f
 #define REST 6378.0f
 #define DT 0.0083f
 #define BOUNCE 0.01f
-#define PARTICLE_COUNT_X 3
-#define PARTICLE_COUNT_Y 2
-#define PARTICLE_COUNT_Z 3
-#define GRID_RESOLUTION 1
-#define DOMAIN_MIN_X 0.0f
-#define DOMAIN_MAX_X 13.0f
-#define DOMAIN_MIN_Y 0.0f
-#define DOMAIN_MAX_Y 13.0f
+#define PARTICLE_COUNT_X 10
+#define PARTICLE_COUNT_Y 10
+#define PARTICLE_COUNT_Z 5
+#define GRID_RESOLUTION 80
 
 
 // Include GLEW
@@ -70,8 +66,8 @@ void WindowSizeCallBack(GLFWwindow *pWindow, int nWidth, int nHeight) {
 //	float hash;						// the hash for the particle
 //};
 
-typedef std::unordered_multimap< int, int > Hash;
-Hash hash_table;
+//typedef std::unordered_multimap< int, int > Hash;
+//Hash hash_table;
 
 class Particle
 {
@@ -84,21 +80,21 @@ class Particle
 	  float lambda;
 	  float rho;
 	  float C;
-	  /*float hash;*/
-	  std::vector<Particle> neighbors;
+	  float hash;
+	  std::vector<unsigned int> neighbors;
 };
 
 std::vector<Particle> particles;
 std::vector< Particle > predict_p_list;
-std::vector<float> g_grid;
-float g_xmax = 11.5;
+//std::vector<float> g_grid;
+float g_xmax = 1;
 float g_xmin = 0;
-float g_ymax = 11.5;
+float g_ymax = 10;
 float g_ymin = 0;
-float g_zmax = 11.5;
+float g_zmax = 0.5;
 float g_zmin = 0;
-float h_sphere = 1.05;
-float g_h = 0.2;
+float h_sphere = 0.05;
+float g_h = 0.1;
 float POW_H_9 =(g_h*g_h*g_h*g_h*g_h*g_h*g_h*g_h*g_h); // h^9
 float POW_H_6 =(g_h*g_h*g_h*g_h*g_h*g_h); // h^6
 //float wall = 10;
@@ -106,12 +102,11 @@ float POW_H_6 =(g_h*g_h*g_h*g_h*g_h*g_h); // h^6
 //float rotatey = 0;
 //float rotatex = 0;
 //float rotatez = 0;
-float g_k = 0.00001f;
-float g_dq = 2.0f;
-float dqMag = g_dq * g_h;
-float kpoly = 315.0f / (64.0f * PI * pow(g_h, 9));
-float wQH = kpoly * pow((g_h * g_h - dqMag * dqMag), 3);
-int npart = PARTICLE_COUNT_X*PARTICLE_COUNT_Y*PARTICLE_COUNT_Z;
+float g_k = 0.0001f;
+float g_dq = 0.3f;
+float gota = 0;
+glm::vec3 gravity = glm::vec3(0.0, -9.8, 0.0);
+//int npart = PARTICLE_COUNT_X*PARTICLE_COUNT_Y*PARTICLE_COUNT_Z;
 
 glm::vec3 fext = glm::vec3(0.0, -9.8, 0.0);
 
@@ -140,15 +135,16 @@ glm::vec3 fext = glm::vec3(0.0, -9.8, 0.0);
 
 void InitParticleList()
 {
+	particles.clear();
 	//start positioning particles at some distance from the left and bottom walls
-	float x_ini_pos = 1.0f + g_xmin;
-	float y_ini_pos = 0.1f + g_ymin;
-	float z_ini_pos = 1.0f + g_zmin;
+	float x_ini_pos = 0.01f + g_xmin;
+	float y_ini_pos = 0.0000001f + g_ymin;
+	float z_ini_pos = 0.1f + g_zmin;
 
 	// deltas for particle distribution
-	float d_x = 1.04f;
-	float d_y = 1.04f;
-	float d_z = 1.04f;
+	float d_x = 0.05f;
+	float d_y = 0.05f;
+	float d_z = 0.05f;
 
 	printf("Number of particles in the simulation: %i.\n", PARTICLE_COUNT_X * PARTICLE_COUNT_Y * PARTICLE_COUNT_Z);
 
@@ -185,99 +181,210 @@ void InitParticleList()
 				p.lambda = 0.0f;
 
 				particles.push_back(p);
-
-				//p.position = glm::vec3(, y_pos + r, z_pos + r);
-				//p.velocity = glm::vec3(0.0f);
-				///*p.vel     = glm::vec2(0.5f, 0.5f);*/
-
-				//p.mass = 1.0f;
-				//p.delta_p = glm::vec3(0.0f);
-				//p.lambda = 0.0f;
-				//p.rho = 0.0f;
-				//p.C = 1.0f;
-				//p.neighbors.clear();
-				///*p.hash = 0;*/
-
-				//particles.push_back(p);
-
 				z_pos += d_z;
 			}
 			y_pos += d_y;
 		}
 		x_pos += d_x;
 	}
-
-	//// copies p_list particle data to predict_p_list
-	//unsigned int num_particles = p_list.size();
-
-	//for (unsigned int i = 0; i < num_particles; i++)
-	//	predict_p_list.push_back(p_list[i]);
-
-	//printf("--> # of particles : %i\n", p_list.size());
 }
 
-//void InitParticleList()
-//{
-//	//start positioning particles at some distance from the left and bottom walls
-//	float x_ini_pos = 1.0f + g_xmin;
-//	float y_ini_pos = 1.0f + g_ymin;
-//	float z_ini_pos = 1.0f + g_zmin;
-//
-//	// deltas for particle distribution
-//	float d_x = 2.04f;
-//	float d_y = 2.04f;
-//	float d_z = 2.04f;
-//	printf("Number of particles in the simulation: %i.\n", PARTICLE_COUNT_X * PARTICLE_COUNT_Y * PARTICLE_COUNT_Z);
-//
-//	float x_pos = x_ini_pos;
-//
-//	for (unsigned int x = 0; x < PARTICLE_COUNT_X; x++)
-//	{
-//		float y_pos = y_ini_pos;
-//
-//		for (unsigned int y = 0; y < PARTICLE_COUNT_Y; y++)
-//		{
-//			float z_pos = z_ini_pos;
-//			for (unsigned int y = 0; y < PARTICLE_COUNT_Y; y++)
-//			{
-//				
-//				Particle p;
-//
-//				float r = (static_cast <float> (rand()) / static_cast <float> (RAND_MAX)) / 100.0f;
-//
-//				//float v = ((static_cast <float> (rand()) / static_cast <float> (RAND_MAX)) -0.5f) / 100.0f;
-//
-//				p.position = glm::vec3(x_pos + r, y_pos + r, z_pos + r);
-//				p.velocity = glm::vec3(0.0f);
-//				/*p.vel     = glm::vec2(0.5f, 0.5f);*/
-//
-//				p.mass = 1.0f;
-//				p.delta_p = glm::vec3(0.0f);
-//				p.lambda = 0.0f;
-//				p.rho = 0.0f;
-//				p.C = 1.0f;
-//				p.neighbors.clear();
-//				p.hash = 0;
-//
-//				particles.push_back(p);
-//
-//				z_pos += d_z;
-//			}
-//			y_pos += d_y;
-//		}
-//		x_pos += d_x;
-//	}
-//	unsigned int num_particles = particles.size();
-//
-//	for (unsigned int i = 0; i < num_particles; i++)
-//		predict_p_list.push_back(particles[i]);
-//
-//	printf("--> # of particles : %i\n", particles.size());
-//}
-//
+void teardrop()
+{
+	//start positioning particles at some distance from the left and bottom walls
+	float x_ini_pos = 0.2;
+	float y_ini_pos = 2;
+	float z_ini_pos = 0.2;
+
+	// deltas for particle distribution
+	float d_x = 0.05f;
+	float d_y = 0.05f;
+	float d_z = 0.05f;
+
+	float x_pos = x_ini_pos;
+
+	for (unsigned int x = 0; x < 2; x++)
+	{
+		float y_pos = y_ini_pos;
+
+		for (unsigned int y = 0; y < 2; y++)
+		{
+			float z_pos = z_ini_pos;
+
+			for (unsigned int z = 0; z < 2; z++)
+			{
+				Particle p;
+
+				float r = (static_cast <float> (rand()) / static_cast <float> (RAND_MAX)) / 100.0f;
+
+				//float v = ((static_cast <float> (rand()) / static_cast <float> (RAND_MAX)) -0.5f) / 100.0f;
+
+
+				p.position.x = x_pos + r;
+				p.position.y = y_pos + r;
+				p.position.z = z_pos + r;
+
+				p.velocity = glm::vec3(0.0f);
+				p.mass = 1;
+				p.delta_p = glm::vec3(0.0f);
+				p.rho = 0.0;
+				p.C = 0;
+				p.pred_position = glm::vec3(0.0f);
+				p.lambda = 0.0f;
+
+				particles.push_back(p);
+				z_pos += d_z;
+			}
+			y_pos += d_y;
+		}
+		x_pos += d_x;
+	}
+}
+
+float wPoly6(glm::vec3 r, float h) {
+	float dot_rr = glm::dot(r, r);
+	float h2 = h*h;
+	float h4 = h2*h2;
+	float h2_dot_rr = h2 - dot_rr;
+
+	if (length(r) <= h)
+		return 315.0f / (64.0f * 3.1415f * h4*h4*h) * h2_dot_rr * h2_dot_rr * h2_dot_rr;
+	else
+		return 0.0f;
+}
+
+glm::vec3 wSpiky(glm::vec3 r, float h) {
+	float spiky = 45.0f / (PI * pow(h, 6));
+	float rlen = glm::length(r);
+	if (rlen >= h)
+		return glm::vec3(0.0f);
+	float coeff = (h - rlen) * (h - rlen);
+	coeff *= spiky;
+	coeff /= rlen;
+	return r * -coeff;
+}
+
+float DensityEstimator(Particle p, std::vector<Particle> predict_p) {
+	float rho = 0.0;
+	int neighborsize = p.neighbors.size();
+	for (int j = 0 ; j < neighborsize ; j++) {
+		glm::vec3 r = p.position - predict_p[p.neighbors[j]].position;
+		rho += predict_p[p.neighbors[j]].mass * wPoly6(r, g_h);
+	}
+	return rho;
+}
+
+float NablaCSquaredSumFunction(Particle p, std::vector<Particle> predict_p) {
+
+	std::vector<glm::vec3> NablaC;
+	float res = 0.0f;
+	int neighborsize = p.neighbors.size();
+
+	if (neighborsize > 0) {
+		for (int j = 0; j < neighborsize; j++) {													//for k != i
+			glm::vec3 r = p.position - predict_p[p.neighbors[j]].position;
+			glm::vec3 nablac= -wSpiky(r, g_h) / REST;
+			NablaC.push_back(nablac);
+		}
+
+		NablaC.push_back(glm::vec3(0.0f));																	//for k = i
+		int last = NablaC.size()-1; 
+
+		for (int j = 0; j < neighborsize; j++) {
+			glm::vec3 r = p.position - predict_p[p.neighbors[j]].position;
+			NablaC[last] = NablaC[last] + wSpiky(r, g_h);
+		}
+		NablaC[last] = NablaC[last] / REST;
+
+		for (int k = 0 ; k < NablaC.size() ; k++) {
+			float norm_nablac = length(NablaC[k]);
+			res += norm_nablac * norm_nablac;
+		}
+	}
+
+	return res;
+}
+
+glm::vec3 CalculateDp(Particle p, std::vector<Particle> predict_p) {
+	glm::vec3 res = glm::vec3(0.0f);
+	int neighborsize = p.neighbors.size();
+	float dqMag = g_dq * g_h;
+	float kpoly = 315.0f / (64.0f * PI * pow(g_h, 9));
+	float wQH = kpoly * pow((g_h * g_h - dqMag * dqMag), 3);
+	for (int j = 0; j < neighborsize; j++) {
+		glm::vec3 r = p.position - predict_p[p.neighbors[j]].position;
+		float corr = wPoly6(r, g_h) / wQH;
+		corr *= corr * corr * corr;
+		float scorr =  -g_k * corr;
+		float lambdaSum = p.lambda + predict_p[p.neighbors[j]].lambda;
+		res += (lambdaSum + scorr) * wSpiky(r, g_h);
+	}
+
+	res = res / REST;
+	return res;
+}
+
+glm::vec3 eta(Particle p, std::vector<Particle> predict_p, float &vorticityMag) {
+	glm::vec3 eta = glm::vec3(0.0f);
+	int neighborsize = p.neighbors.size();
+	if (neighborsize > 0) {
+		for (int j = 0; j < neighborsize; j++) {
+				glm::vec3 r = p.position - predict_p[p.neighbors[j]].position;
+				eta += wSpiky(r, g_h) * vorticityMag;
+		}
+	}
+
+	return eta;
+}
+
+glm::vec3 VorticityConfinement(Particle p, std::vector< Particle > &p_list) {
+	glm::vec3 omega = glm::vec3(0.0f);
+	float vorticityEps = 0.0001f;
+	unsigned int num_neighbors = p.neighbors.size();
+
+	for (unsigned int k = 0; k < num_neighbors; k++) {
+		glm::vec3 v_ij(p_list[p.neighbors[k]].velocity - p.velocity);
+		glm::vec3 r(p.position - p_list[p.neighbors[k]].position);
+		omega += glm::cross(v_ij, wSpiky(r, g_h));
+	}
+
+	float omegaLength = glm::length(omega);
+	if (omegaLength == 0.0f) {
+		//No direction for eta
+		return glm::vec3(0.0f);
+	}
+
+	glm::vec3 etaVal = eta(p, p_list, omegaLength);
+	if (etaVal.x == 0 && etaVal.y == 0 && etaVal.z == 0) {
+		//Particle is isolated or net force is 0
+		return glm::vec3(0.0f);
+	}
+
+	glm::vec3 n = normalize(etaVal);
+
+	return (glm::cross(n, omega) * vorticityEps);
+}
+
+glm::vec3 XSPHViscosity(Particle p, std::vector< Particle > &p_list)
+{
+	float c = 0.01f;
+	unsigned int num_neighbors = p.neighbors.size();
+	glm::vec3 visc = glm::vec3(0.0f);
+	if (num_neighbors > 0) {
+		for (unsigned int k = 0; k < num_neighbors; k++)
+		{
+			glm::vec3 v_ij(p_list[p.neighbors[k]].velocity - p.velocity);
+			glm::vec3 r(p.position - p_list[p.neighbors[k]].position);
+
+			visc += v_ij * wPoly6(r, g_h);
+		}
+	}
+	return visc * c;
+}
+
 //int ComputeHash(int &grid_x, int &grid_y, int &grid_z)
 //{
-//	return (grid_x + grid_y + grid_z) * GRID_RESOLUTION;
+//	return grid_x + grid_y * GRID_RESOLUTION;
 //}
 //
 ////------------------------------------------------------------------------------
@@ -288,7 +395,7 @@ void InitParticleList()
 //	int grid_y;
 //	int grid_z;
 //
-//	float cell_size = (DOMAIN_MAX_X - DOMAIN_MIN_X) / GRID_RESOLUTION;
+//	float cell_size = (g_xmax - g_ymin) / GRID_RESOLUTION;
 //
 //	hash_table.clear();
 //
@@ -309,7 +416,7 @@ void InitParticleList()
 //{
 //	unsigned int num_particles = p_list.size();
 //
-//	float cell_size = (DOMAIN_MAX_X - DOMAIN_MIN_X) / GRID_RESOLUTION;
+//	float cell_size = (g_xmax - g_ymin) / GRID_RESOLUTION;
 //
 //	int x_idx;
 //	int y_idx;
@@ -319,8 +426,8 @@ void InitParticleList()
 //	int grid_y_min;
 //	int grid_x_max;
 //	int grid_y_max;
-//	int grid_z_min;
 //	int grid_z_max;
+//	int grid_z_min;
 //
 //	int hash;
 //
@@ -336,514 +443,97 @@ void InitParticleList()
 //		grid_y_max = floor((p_list[i].position[1] + g_h) / cell_size);
 //		grid_z_max = floor((p_list[i].position[2] + g_h) / cell_size);
 //
-//		for (z_idx = grid_z_min; z_idx <= grid_z_max; z_idx++) {
-//			for (y_idx = grid_y_min; y_idx <= grid_y_max; y_idx++) {
+//		for (z_idx = grid_z_min; z_idx <= grid_z_max; z_idx++){
+//			for (y_idx = grid_y_min; y_idx <= grid_y_max; y_idx++){
 //				for (x_idx = grid_x_min; x_idx <= grid_x_max; x_idx++) {
-//					hash = ComputeHash(x_idx, y_idx, y_idx);
+//					hash = ComputeHash(x_idx, y_idx, z_idx);
 //					auto its = hash_table.equal_range(hash);
 //
 //					for (auto it = its.first; it != its.second; ++it)
-//						if (it->second != i)
-//							if (length(p_list[i].position - p_list[it->second].position) <= g_h)
-//								p_list[i].neighbors.push_back(it->second);
+//					if (it->second != i)
+//					if (length(p_list[i].position - p_list[it->second].position) <= g_h)
+//						p_list[i].neighbors.push_back(it->second);
 //				}
 //			}
 //		}
 //	}
 //}
-//
-////------------------------------------------------------------------------------
-//// Poly6 function
-//float WP(glm::vec3 &r, float h)
-//{
-//	float dot_rr = glm::dot(r, r);
-//	float h2 = h*h;
-//	float h4 = h2*h2;
-//	float h2_dot_rr = h2 - dot_rr;
-//
-//	if (length(r) <= H)
-//		return 315.0f / (64.0f * 3.1415f * h4*h4*h) * h2_dot_rr * h2_dot_rr * h2_dot_rr;
-//	else
-//		return 0.0f;
-//}
-//
-////------------------------------------------------------------------------------
-//// Spiky function
-//glm::vec3 NablaW(glm::vec3 &r, float h)
-//{
-//	float spiky = 45.0f / (3.1415f * pow(h, 6));
-//	float rlen = glm::length(r);
-//	if (rlen >= h)
-//		return glm::vec3(0.0f);
-//	float coeff = (h - rlen) * (h - rlen);
-//	coeff *= spiky;
-//	coeff /= rlen;
-//	return r * -coeff;
-//	/*float norm_r = length(r);
-//	float h2 = h*h;
-//	float h_norm_r = h - norm_r;
-//
-//	if (norm_r <= H)
-//	return -45.0f / (3.1415f * h2*h2*h2) * h_norm_r *  h_norm_r * (r/(norm_r + EPSILON));
-//	else
-//	return glm::vec2(0.0f, 0.0f);*/
-//}
-//
-////------------------------------------------------------------------------------
-//void DensityEstimator(std::vector< Particle > &p_list, int i)
-//{
-//	p_list[i].rho = 0.0f;
-//	glm::vec3 r;
-//
-//	int neighbor_count = p_list[i].neighbors.size();
-//
-//	for (int k = 0; k < neighbor_count; k++)
-//	{
-//		r = p_list[i].position - p_list[p_list[i].neighbors[k]].position;
-//		p_list[i].rho += p_list[p_list[i].neighbors[k]].mass * WP(r, H);
-//	}
-//}
-//
-////------------------------------------------------------------------------------
-//float NablaCSquaredSumFunction(std::vector< Particle > &p_list, int i)
-//{
-//	unsigned int num_neighbors = p_list[i].neighbors.size();
-//	glm::vec3 r;
-//	std::vector<glm::vec3> NablaC;
-//
-//	//glm::vec2 NablaC[num_neighbors + 1];
-//	float res = 0.0f;
-//
-//	if (num_neighbors > 0)
-//	{
-//		for (unsigned int k = 0; k < num_neighbors; k++)						// for k != i
-//		{
-//			r = p_list[i].position - p_list[p_list[i].neighbors[k]].position;
-//			glm::vec3 nablac = -NablaW(r, H) / REST;
-//			NablaC.push_back(nablac);
-//		}
-//
-//		NablaC.push_back(glm::vec3(0.0f));																	//for k = i
-//		int last = NablaC.size() - 1;
-//		//NablaC[num_neighbors] = glm::vec2(0.0f, 0.0f);										// for k = i
-//
-//		for (unsigned int k = 0; k < num_neighbors; k++)						// for k != i
-//		{
-//			r = p_list[i].position - p_list[p_list[i].neighbors[k]].position;
-//			/*NablaC[num_neighbors] += NablaW(r, H);*/
-//			NablaC[last] = NablaC[last] + NablaW(r, H);
-//		}
-//		NablaC[last] = NablaC[last] / REST;
-//		/*NablaC[num_neighbors] = NablaC[num_neighbors] / RHO_REST;*/
-//
-//		for (unsigned int k = 0; k < num_neighbors + 1; k++)					// for k != i
-//		{
-//			float norm_nablac = length(NablaC[k]);
-//			res += norm_nablac * norm_nablac;
-//		}
-//	}
-//
-//	return res;
-//}
-//
-////------------------------------------------------------------------------------
-////glm::vec3 vmin(glm::vec3 a, glm::vec3 b, glm::vec3 c)
-////{
-////	return glm::vec2(std::min(a[0], b[0]), std::min(a[1], b[1]));
-////}
-////
-//////------------------------------------------------------------------------------
-////glm::vec2 vmax(glm::vec2 a, glm::vec2 b)
-////{
-////	return glm::vec2(std::max(a[0], b[0]), std::max(a[1], b[1]));
-////}
-//
-////------------------------------------------------------------------------------
-//void CalculateDp(std::vector< Particle > &p_list)
-//{
-//	unsigned int num_particles = p_list.size();
-//
-//	for (unsigned int i = 0; i < num_particles; i++)
-//	{
-//		unsigned int num_neighbors = p_list[i].neighbors.size();
-//
-//		glm::vec3 r;
-//		glm::vec3 res(0.0f);
-//
-//		for (unsigned int k = 0; k < num_neighbors; k++)
-//		{
-//			r = p_list[i].position - p_list[p_list[i].neighbors[k]].position;
-//
-//			float corr = WP(r, H) / wQH;
-//			corr *= corr * corr * corr;
-//			float scorr = -g_k * corr;
-//			/*float scorr = 0.0f;*/
-//
-//			//glm::vec2 dq = 0.1f * H * glm::vec2(1.0f, 1.0f);
-//			//glm::vec2 dq(0.0f, 0.0f);
-//
-//			//float kk = 0.1f;
-//			//float w_ratio = W(r, H) / W(dq, H);
-//			//scorr = -kk * w_ratio * w_ratio * w_ratio * w_ratio;
-//
-//			res += (p_list[i].lambda + p_list[p_list[i].neighbors[k]].lambda/* + scorr*/) * NablaW(r, H);
-//		}
-//
-//		p_list[i].delta_p = res / REST;
-//	}
-//}
-//
-////------------------------------------------------------------------------------
-//// TODO: finish this function
-////void VorticityConfinement(std::vector< Particle > &p_list)
-////{
-////	unsigned int num_particles = p_list.size();
-////
-////	for (unsigned int i = 0; i < num_particles; i++)
-////	{
-////		unsigned int num_neighbors = p_list[i].n.size();
-////
-////		float omega = 0.0f;
-////
-////		for (unsigned int k = 0; k < num_neighbors; k++)
-////		{
-////			glm::vec2 v_ij(p_list[p_list[i].n[k]].vel - p_list[i].vel);
-////			glm::vec2 r(p_list[i].pos - p_list[p_list[i].n[k]].pos);
-////
-////			//omega += cross(v_ij, NablaW(r, H));
-////		}
-////	}
-////}
-//
-////------------------------------------------------------------------------------
-////void XSPHViscosity(std::vector< Particle > &p_list)
-////{
-////	unsigned int num_particles = p_list.size();
-////
-////	float c = 0.01f;
-////
-////	for (unsigned int i = 0; i < num_particles; i++)
-////	{
-////		unsigned int num_neighbors = p_list[i].n.size();
-////
-////		glm::vec2 v_new = glm::vec2(0.0f, 0.0f);
-////
-////		for (unsigned int k = 0; k < num_neighbors; k++)
-////		{
-////			glm::vec2 v_ik(p_list[p_list[i].n[k]].vel - p_list[i].vel);
-////			glm::vec2 r(p_list[i].pos - p_list[p_list[i].n[k]].pos);
-////
-////			v_new += v_ik * W(r, H);
-////		}
-////
-////
-////		v_new *= c;
-////
-////		//printf("v_new : [%f, %f]\n", v_new[0], v_new[1]);
-////
-////		v_new += p_list[i].vel;
-////
-////
-////		p_list[i].vel = v_new;
-////	}
-////}
-//
-////------------------------------------------------------------------------------
-//void CollisionDetectionResponse(std::vector< Particle > &p_list)
-//{
-//	unsigned int num_particles = p_list.size();
-//
-//	//glm::vec2 w_min(wall_min_x, wall_min_y);
-//	//glm::vec2 w_max(wall_max_x, wall_max_y);
-//
-//	for (unsigned int i = 0; i < num_particles; i++){
-//		if (predict_p_list[i].position.z < g_zmin){
-//			predict_p_list[i].position.z = g_zmin + 0.000001f;
-//		}
-//		if (predict_p_list[i].position.z > g_zmax){
-//			predict_p_list[i].position.z = g_zmax - 0.000001f;
-//		}
-//		if (predict_p_list[i].position.y < g_ymin){
-//			predict_p_list[i].position.y = g_ymin + 0.000001f;
-//		}
-//		if (predict_p_list[i].position.y > g_ymax){
-//			predict_p_list[i].position.y = g_ymax - 0.000001f;
-//		}
-//		if (predict_p_list[i].position.x < g_xmin){
-//			predict_p_list[i].position.x = g_xmin + 0.000001f;
-//		}
-//		if (predict_p_list[i].position.x > g_xmax){
-//			predict_p_list[i].position.x = g_xmax - 0.000001f;
-//		}
-//	}
-//}
-//
-////------------------------------------------------------------------------------
-//void UpdatePositions(std::vector< Particle > &p_list)
-//{
-//	unsigned int num_particles = p_list.size();
-//
-//	for (unsigned int i = 0; i < num_particles; i++)
-//		p_list[i].position += p_list[i].delta_p;
-//}
-//
-////------------------------------------------------------------------------------
-//void UpdateVelocity(std::vector< Particle > &predict_p_list, std::vector< Particle > &p_list)
-//{
-//	unsigned int num_particles = p_list.size();
-//
-//	for (unsigned int i = 0; i < num_particles; i++)
-//		predict_p_list[i].velocity = (1.0f / DT) * (predict_p_list[i].position - p_list[i].position);
-//}
-//
-////------------------------------------------------------------------------------
-//void Algorithm(void)
-//{
-//	unsigned int num_particles = particles.size();
-//
-//	for (unsigned int i = 0; i < num_particles; i++)
-//	{
-//		predict_p_list[i].velocity = particles[i].velocity + DT * fext;					// apply forces (line 2)
-//		predict_p_list[i].position = particles[i].position + DT * predict_p_list[i].velocity;// predict position (line 3)
-//	}
-//
-//	BuildHashTable(predict_p_list, hash_table);
-//	SetUpNeighborsLists(predict_p_list, hash_table);							// find neighbors(line 6)
-//
-//	unsigned int curr_iteration = 0;
-//
-//	while (curr_iteration < ITER)
-//	{
-//		for (unsigned int i = 0; i < num_particles; i++)
-//		{
-//			DensityEstimator(predict_p_list, i);								// Equation 2
-//			predict_p_list[i].C = predict_p_list[i].rho / REST - 1.0f;			// Equation 1
-//			float SummationNablaCSquared = NablaCSquaredSumFunction(predict_p_list, i); // Equation 8 and part of the Equation 9
-//			predict_p_list[i].lambda = -predict_p_list[i].C / (SummationNablaCSquared + EPSILON); // compute lambda (line 10)
-//		}
-//
-//		CalculateDp(predict_p_list);											// Calculate dp (line 13)
-//		CollisionDetectionResponse(predict_p_list);								// Particle-solid collision test and response (line 14)
-//		UpdatePositions(predict_p_list);										// Update position (line 17)
-//
-//		curr_iteration++;
-//	}
-//
-//	UpdateVelocity(predict_p_list, particles);										// Update velocity (line 21)
-//	//XSPHViscosity(p_list);														// XSPH viscosity (line 22)
-//
-//	for (unsigned int i = 0; i < num_particles; i++)
-//	{
-//		particles[i].velocity = predict_p_list[i].velocity;
-//		particles[i].position = predict_p_list[i].position;									// Update positions (line 23)
-//		particles[i].mass = predict_p_list[i].mass;
-//		particles[i].delta_p = predict_p_list[i].delta_p;
-//		particles[i].lambda = predict_p_list[i].lambda;
-//		particles[i].rho = predict_p_list[i].rho;
-//		particles[i].C = predict_p_list[i].C;
-//		particles[i].neighbors = predict_p_list[i].neighbors;
-//
-//		//printf("[%f, %f]\n", p_list[i].vel[0], p_list[i].vel[1]);
-//	}
-//
-//	//printf("-------------\n");
-//}
 
-
-//IMPLEMENTAÇÃO ANTIGA
-
-float wPoly6(glm::vec3 r, float h) {
-	float dot_rr = glm::dot(r, r);
-	float h2 = h*h;
-	float h4 = h2*h2;
-	float h2_dot_rr = h2 - dot_rr;
-
-	if (length(r) <= h)
-		return 315.0f / (64.0f * 3.1415f * h4*h4*h) * h2_dot_rr * h2_dot_rr * h2_dot_rr;
-	else
-		return 0.0f;
-	/*float rlen = length(r);
-	if (rlen >= h)
-		return 0;
-	float teste = 315.0 / (64.0 * PI * POW_H_9) * (h*h - glm::dot(r,r)) * (h*h - glm::dot(r,r)) * (h*h - glm::dot(r,r));
-	teste = teste;
-	return teste;*/
-}
-
-glm::vec3 wSpiky(glm::vec3 r, float h) {
-	float spiky = 45.0f / (PI * pow(h, 6));
-	float rlen = glm::length(r);
-	if (rlen >= h)
-		return glm::vec3(0.0f);
-	float coeff = (h - rlen) * (h - rlen);
-	coeff *= spiky;
-	coeff /= rlen;
-	return r * -coeff;
-	/*float rlen = glm::length(r);
-	if (rlen > h || rlen == 0)
-		return glm::vec3(0.0f);*/
-	//glm::vec3 teste = (45.0f / (PI * POW_H_6)) * (((h - glm::length(r)) * (h - glm::length(r))) * (r/(glm::length(r)+EPSILON)));
-	//return teste;
-}
-
-float DensityEstimator(Particle p) {
-	float rho = 0.0;
-	int neighborsize = p.neighbors.size();
-	for (int j = 0 ; j < neighborsize ; j++) {
-		glm::vec3 r = p.position - p.neighbors[j].position;
-		rho += + p.neighbors[j].mass * wPoly6(r, g_h);
-	}
-	return rho;
-}
-
-float NablaCSquaredSumFunction(Particle p) {
-
-	std::vector<glm::vec3> NablaC;
-	float res = 0.0f;
-	int neighborsize = p.neighbors.size();
-
-	if (neighborsize > 0) {
-		for (int j = 0; j < neighborsize; j++) {													//for k != i
-			glm::vec3 r = p.position - p.neighbors[j].position;
-			glm::vec3 nablac= -wSpiky(r, g_h) / REST;
-			NablaC.push_back(nablac);
-		}
-
-		NablaC.push_back(glm::vec3(0.0f));																	//for k = i
-		int last = NablaC.size()-1; 
-
-		for (int j = 0; j < neighborsize; j++) {
-			glm::vec3 r = p.position - p.neighbors[j].position;
-			NablaC[last] = NablaC[last] + wSpiky(r, g_h);
-		}
-		NablaC[last] = NablaC[last] / REST;
-
-		for (int k = 0 ; k < NablaC.size() ; k++) {
-			float norm_nablac = length(NablaC[k]);
-			res += norm_nablac * norm_nablac;
-		}
-	}
-
-	return res;
-}
-
-glm::vec3 CalculateDp(Particle p) {
-	glm::vec3 res = glm::vec3(0.0f);
-	int neighborsize = p.neighbors.size();
-	float g_dq = 0.1*g_h;
-	glm::vec3 poly_dq =  g_dq * glm::vec3(1.0f) + p.position;
-	for (int j = 0; j < neighborsize; j++) {
-		glm::vec3 r = p.position - p.neighbors[j].position;
-		float corr = wPoly6(r, g_h) / wQH;
-		corr *= corr * corr * corr;
-		float scorr =  -g_k * corr;
-		float lambdaSum = p.lambda + p.neighbors[j].lambda;
-		res += (lambdaSum + scorr) * wSpiky(r, g_h);
-	}
-
-	res = res / REST;
-	return res;
-}
 
 void Algorithm() {
-
-	std::vector<Particle> predict_p = particles;
-	glm::vec3 gravity = glm::vec3(0.0, -9.8, 0.0);
-
-	
-
-	/*time_t nowTime = time(0);*/
-
-	/*if((difftime(nowTime, g_initTime) > 15) && (wall <= 13.1) ) {
-		if(g_zmax > 10)
-			g_zmax = g_zmax - 0.05;
-		else {
-			wall = 14;
-		}
+	if (gota == 1){
+		teardrop();
+		gota = 2;
 	}
 
-	if(wall >= 14) {
-		g_zmax = g_zmax + 0.05;
-		if (g_zmax > 13.1)
-			wall = 10;
-	}*/
-
+	int npart = particles.size();
+	std::vector<Particle> predict_p = particles;
+	
 	for (int i = 0; i < npart ; i++) {
 		predict_p[i].velocity = particles[i].velocity + DT * gravity;
 		predict_p[i].position = particles[i].position + DT * predict_p[i].velocity;
 	}
 	
-
-	/*double currentTimeBefore = glfwGetTime();
-
-	printf("%f tempo antes de entrar no for \n", double(currentTimeBefore));*/
 	for (int ineigh = 0; ineigh < npart; ineigh++) {
 		for (int j = 0; j < npart; j++) {
 			if (ineigh != j) {
 				glm::vec3 r = predict_p[ineigh].position - predict_p[j].position;
 				if(glm::length(r) <= g_h) {
-					predict_p[ineigh].neighbors.push_back(predict_p[j]);
+					predict_p[ineigh].neighbors.push_back(j);
 				}
 			}
 		}
 	}
+	//BuildHashTable(predict_p_list, hash_table);
+	//SetUpNeighborsLists(predict_p_list, hash_table);
 
-	/*double currentTimeNeigh = glfwGetTime();
-
-	printf("%f tempo depois de entrar no for \n", double(currentTimeNeigh));*/
-	
 
 	int iter = 0;
-
 	while(iter < ITER) {
 		for (int i = 0; i < npart; i++) {
-			predict_p[i].rho = DensityEstimator(predict_p[i]);
+			predict_p[i].rho = DensityEstimator(predict_p[i], predict_p);
 			predict_p[i].C = predict_p[i].rho / REST - 1;
-			float sumNabla = NablaCSquaredSumFunction(predict_p[i]);
+			float sumNabla = NablaCSquaredSumFunction(predict_p[i], predict_p);
 			predict_p[i].lambda = - predict_p[i].C / (sumNabla + EPSILON);
 		}
-		int start = clock();
+		
 		for (int i = 0; i < npart; i++) {
-			predict_p[i].delta_p = CalculateDp(predict_p[i]);
+			predict_p[i].delta_p = CalculateDp(predict_p[i], predict_p);
 			
 			if( predict_p[i].position.z < g_zmin){
-				predict_p[i].position.z = g_zmin+0.000001f;
+				predict_p[i].position.z = g_zmin;
 				/*glm::vec3 normal = glm::vec3(0,0,1);
-				predict_p[i].velocity.z = glm::reflect(predict_p[i].velocity, normal).z * BOUNCE;*/
+				predict_p[i].velocity.z = glm::reflect(predict_p[i].velocity, normal).z * DT;*/
 				/*predict_p[i].position = particles[i].position + predict_p[i].velocity * BOUNCE;*/
 			}
 			if( predict_p[i].position.z > g_zmax){
-				predict_p[i].position.z = g_zmax-0.000001f;
+				predict_p[i].position.z = g_zmax;
 				/*glm::vec3 normal = glm::vec3(0,0,-1);
-				predict_p[i].velocity.z = glm::reflect(predict_p[i].velocity, normal).z * BOUNCE;*/
+				predict_p[i].velocity.z = glm::reflect(predict_p[i].velocity, normal).z * DT;*/
 				/*predict_p[i].position = particles[i].position + predict_p[i].velocity * BOUNCE;*/
 			}
-			if( predict_p[i].position.y < -g_ymax){
-				predict_p[i].position.y = -g_ymax+0.000001f;
+			if( predict_p[i].position.y < g_ymin){
+				predict_p[i].position.y = g_ymin;
 				/*glm::vec3 normal = glm::vec3(0,1,0);
-				predict_p[i].velocity.y = glm::reflect(predict_p[i].velocity, normal).y;*/
+				predict_p[i].velocity.y = glm::reflect(predict_p[i].velocity, normal).y * DT;*/
 				/*predict_p[i].position = particles[i].position + predict_p[i].velocity * BOUNCE;*/
 			}
 			
-			if( predict_p[i].position.x < -g_xmax){
-				predict_p[i].position.x = -g_xmax+0.000001f;
+			if( predict_p[i].position.x < g_xmin){
+				predict_p[i].position.x = g_xmin;
 				/*glm::vec3 normal = glm::vec3(1,0,0);
-				predict_p[i].velocity.x = glm::reflect(predict_p[i].velocity, normal).x * BOUNCE;*/
+				predict_p[i].velocity.x = glm::reflect(predict_p[i].velocity, normal).x * DT;*/
 				/*predict_p[i].position = particles[i].position + predict_p[i].velocity * BOUNCE;*/
 				
 			}
 			if( predict_p[i].position.x > g_xmax){
-				predict_p[i].position.x = g_xmax-0.000001f;
+				predict_p[i].position.x = g_xmax;
 				/*glm::vec3 normal = glm::vec3(-1,0,0);
-				predict_p[i].velocity.x = glm::reflect(predict_p[i].velocity, normal).x * BOUNCE;*/
+				predict_p[i].velocity.x = glm::reflect(predict_p[i].velocity, normal).x * DT;*/
 				/*predict_p[i].position = particles[i].position + predict_p[i].velocity * BOUNCE;*/
 				
-			}
-
-			
+			}	
 		}
-		int end = clock();
-		std::cout << "it took " << end - start << "ticks, or " << ((float)end - start) / CLOCKS_PER_SEC << "seconds." << std::endl;
 
 		for (int i = 0; i < npart; i++) {
 			predict_p[i].position = predict_p[i].position + predict_p[i].delta_p;
@@ -852,27 +542,16 @@ void Algorithm() {
 		iter++;
 	}
 
-	//g_xmax = g_xmax - 0.1;
-
-	
-
 	for (int i = 0; i < npart; i++) {
 		predict_p[i].velocity = (1/DT) * (predict_p[i].position - particles[i].position);
+		/*predict_p[i].velocity += VorticityConfinement(predict_p[i], predict_p) * DT;
+		predict_p[i].delta_p += XSPHViscosity(predict_p[i], predict_p);*/
 		predict_p[i].neighbors.clear();
 	}
 
 	particles = predict_p;
 }
 
-//void BuildGrid() {
-//	for(int i=-g_xmax;i<=g_xmax;i++)
-//	{
-//		g_grid.push_back(i); g_grid.push_back(-g_ymax); g_grid.push_back(-g_xmax);
-//		g_grid.push_back(i); g_grid.push_back(-g_ymax); g_grid.push_back(g_xmax);
-//		g_grid.push_back(-g_xmax); g_grid.push_back(-g_ymax); g_grid.push_back(i);
-//		g_grid.push_back(g_xmax); g_grid.push_back(-g_ymax); g_grid.push_back(i);
-//	}
-//}
 
 int main(void)
 {
@@ -939,9 +618,10 @@ int main(void)
 	TwAddVarRW(g_pToolBar, "rotatez", TW_TYPE_FLOAT, &rotatez, " label='rotation y of wall' min=-360 max=360 step=1.0 keyIncr=r keyDecr=R help='Rotation speed (turns/second)' ");*/
 	TwAddVarRW(g_pToolBar, "g_zmin", TW_TYPE_FLOAT, &g_zmin, " label='position z of wall' min=-13 max=13 step=0.05 keyIncr=r keyDecr=R help='Rotation speed (turns/second)' ");
 	TwAddVarRW(g_pToolBar, "g_xmax", TW_TYPE_FLOAT, &g_xmax, " label='position x of wall' min=-40 max=40 step=0.01 keyIncr=r keyDecr=R help='Rotation speed (turns/second)' ");
-	TwAddVarRW(g_pToolBar, "g_k", TW_TYPE_FLOAT, &g_k, " label='k for scorr' min=-13 max=13 step=0.01 keyIncr=r keyDecr=R help='Rotation speed (turns/second)' ");
+	TwAddVarRW(g_pToolBar, "g_k", TW_TYPE_FLOAT, &g_k, " label='k for scorr' min=-13 max=13 step=0.0001 keyIncr=r keyDecr=R help='Rotation speed (turns/second)' ");
 	TwAddVarRW(g_pToolBar, "g_dq", TW_TYPE_FLOAT, &g_dq, " label='dq for scorr' min=-13 max=13 step=0.01 keyIncr=r keyDecr=R help='Rotation speed (turns/second)' ");
 	TwAddVarRW(g_pToolBar, "h_sphere", TW_TYPE_FLOAT, &h_sphere, " label='h_sphere' min=0 max=5 step=0.01 keyIncr=h keyDecr=H help='Rotation speed (turns/second)' ");
+	TwAddVarRW(g_pToolBar, "gota", TW_TYPE_FLOAT, &gota, " label='gota' min=0 max=2 step=1 keyIncr=r keyDecr=R help='Rotation speed (turns/second)' ");
 
 	// Ensure we can capture the escape key being pressed below
 	glfwSetInputMode(g_pWindow, GLFW_STICKY_KEYS, GL_TRUE);
@@ -1050,7 +730,6 @@ int main(void)
 	do {   
 		
 		check_gl_error();
-	
 
         //use the control key to free the mouse
 		if (glfwGetKey(g_pWindow, GLFW_KEY_LEFT_CONTROL) != GLFW_PRESS)
