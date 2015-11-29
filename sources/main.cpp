@@ -7,12 +7,9 @@
 
 #define PI 3.1415f
 #define EPSILON  600.0f
-#define ITER 1
-#define NPART 1000
-#define H 0.1f
+#define ITER 4
 #define REST 6378.0f
 #define DT 0.0083f
-#define BOUNCE 0.01f
 #define PARTICLE_COUNT_X 10
 #define PARTICLE_COUNT_Y 10
 #define PARTICLE_COUNT_Z 5
@@ -66,8 +63,8 @@ void WindowSizeCallBack(GLFWwindow *pWindow, int nWidth, int nHeight) {
 //	float hash;						// the hash for the particle
 //};
 
-//typedef std::unordered_multimap< int, int > Hash;
-//Hash hash_table;
+typedef std::unordered_multimap< int, int > Hash;
+Hash hash_table;
 
 class Particle
 {
@@ -85,13 +82,12 @@ class Particle
 };
 
 std::vector<Particle> particles;
-std::vector< Particle > predict_p_list;
-//std::vector<float> g_grid;
+std::vector<float> g_grid;
 float g_xmax = 1;
 float g_xmin = 0;
-float g_ymax = 10;
+float g_ymax = 1;
 float g_ymin = 0;
-float g_zmax = 0.5;
+float g_zmax = 1;
 float g_zmin = 0;
 float h_sphere = 0.05;
 float g_h = 0.1;
@@ -382,82 +378,79 @@ glm::vec3 XSPHViscosity(Particle p, std::vector< Particle > &p_list)
 	return visc * c;
 }
 
-//int ComputeHash(int &grid_x, int &grid_y, int &grid_z)
-//{
-//	return grid_x + grid_y * GRID_RESOLUTION;
-//}
-//
-////------------------------------------------------------------------------------
-//void BuildHashTable(std::vector< Particle > &p_list, Hash &hash_table)
-//{
-//	unsigned int num_particles = p_list.size();
-//	int grid_x;
-//	int grid_y;
-//	int grid_z;
-//
-//	float cell_size = (g_xmax - g_ymin) / GRID_RESOLUTION;
-//
-//	hash_table.clear();
-//
-//	for (unsigned int i = 0; i < num_particles; i++)
-//	{
-//		grid_x = floor(p_list[i].position[0] / cell_size);
-//		grid_y = floor(p_list[i].position[1] / cell_size);
-//		grid_z = floor(p_list[i].position[2] / cell_size);
-//
-//		p_list[i].hash = ComputeHash(grid_x, grid_y, grid_z);
-//
-//		hash_table.insert(Hash::value_type(p_list[i].hash, i));
-//	}
-//}
-//
-////------------------------------------------------------------------------------
-//void SetUpNeighborsLists(std::vector< Particle > &p_list, Hash &hash_table)
-//{
-//	unsigned int num_particles = p_list.size();
-//
-//	float cell_size = (g_xmax - g_ymin) / GRID_RESOLUTION;
-//
-//	int x_idx;
-//	int y_idx;
-//	int z_idx;
-//
-//	int grid_x_min;
-//	int grid_y_min;
-//	int grid_x_max;
-//	int grid_y_max;
-//	int grid_z_max;
-//	int grid_z_min;
-//
-//	int hash;
-//
-//	for (unsigned int i = 0; i < num_particles; i++)
-//	{
-//		p_list[i].neighbors.clear();
-//
-//		grid_x_min = floor((p_list[i].position[0] - g_h) / cell_size);
-//		grid_y_min = floor((p_list[i].position[1] - g_h) / cell_size);
-//		grid_z_min = floor((p_list[i].position[2] - g_h) / cell_size);
-//
-//		grid_x_max = floor((p_list[i].position[0] + g_h) / cell_size);
-//		grid_y_max = floor((p_list[i].position[1] + g_h) / cell_size);
-//		grid_z_max = floor((p_list[i].position[2] + g_h) / cell_size);
-//
-//		for (z_idx = grid_z_min; z_idx <= grid_z_max; z_idx++){
-//			for (y_idx = grid_y_min; y_idx <= grid_y_max; y_idx++){
-//				for (x_idx = grid_x_min; x_idx <= grid_x_max; x_idx++) {
-//					hash = ComputeHash(x_idx, y_idx, z_idx);
-//					auto its = hash_table.equal_range(hash);
-//
-//					for (auto it = its.first; it != its.second; ++it)
-//					if (it->second != i)
-//					if (length(p_list[i].position - p_list[it->second].position) <= g_h)
-//						p_list[i].neighbors.push_back(it->second);
-//				}
-//			}
-//		}
-//	}
-//}
+int ComputeHash(int &grid_x, int &grid_y, int &grid_z)
+{
+	return (grid_x + grid_y * GRID_RESOLUTION) + grid_z * (GRID_RESOLUTION * GRID_RESOLUTION);
+}
+
+//------------------------------------------------------------------------------
+void BuildHashTable(std::vector<Particle> &p_list, Hash &hash_table)
+{
+	int num_particles = p_list.size();
+	int grid_x;
+	int grid_y;
+	int grid_z;
+
+	float cell_size = (g_xmax - g_ymin) / GRID_RESOLUTION;
+
+	hash_table.clear();
+
+	for (int i = 0; i < num_particles; i++)
+	{
+		grid_x = floor(p_list[i].position[0] / cell_size);
+		grid_y = floor(p_list[i].position[1] / cell_size);
+		grid_z = floor(p_list[i].position[2] / cell_size);
+
+		p_list[i].hash = ComputeHash(grid_x, grid_y, grid_z);
+
+		hash_table.insert(Hash::value_type(p_list[i].hash, i));
+	}
+}
+
+//------------------------------------------------------------------------------
+void SetUpNeighborsLists(std::vector<Particle> &p_list, Hash &hash_table)
+{
+	unsigned int num_particles = p_list.size();
+
+	float cell_size = (g_xmax - g_xmin) / GRID_RESOLUTION;
+
+	int x_idx;
+	int y_idx;
+	int z_idx;
+
+	int grid_x_min;
+	int grid_y_min;
+	int grid_x_max;
+	int grid_y_max;
+	int grid_z_max;
+	int grid_z_min;
+
+	int hash;
+
+	for (int i = 0; i < num_particles; i++) {
+		p_list[i].neighbors.clear();
+
+		grid_x_min = floor((p_list[i].position[0] - g_h) / cell_size);
+		grid_y_min = floor((p_list[i].position[1] - g_h) / cell_size);
+		grid_z_min = floor((p_list[i].position[2] - g_h) / cell_size);
+
+		grid_x_max = floor((p_list[i].position[0] + g_h) / cell_size);
+		grid_y_max = floor((p_list[i].position[1] + g_h) / cell_size);
+		grid_z_max = floor((p_list[i].position[2] + g_h) / cell_size);
+
+		for (z_idx = grid_z_min; z_idx <= grid_z_max; z_idx++)
+			for (y_idx = grid_y_min; y_idx <= grid_y_max; y_idx++)
+				for (x_idx = grid_x_min; x_idx <= grid_x_max; x_idx++) {
+					hash = ComputeHash(x_idx, y_idx, z_idx);
+					auto its = hash_table.equal_range(hash);
+
+					for (auto it = its.first; it != its.second; ++it)
+						if (it->second != i)
+							if (length(p_list[i].position - p_list[it->second].position) <= g_h)
+								p_list[i].neighbors.push_back(it->second);
+				}
+	}
+}
 
 
 void Algorithm() {
@@ -474,7 +467,7 @@ void Algorithm() {
 		predict_p[i].position = particles[i].position + DT * predict_p[i].velocity;
 	}
 	
-	for (int ineigh = 0; ineigh < npart; ineigh++) {
+	/*for (int ineigh = 0; ineigh < npart; ineigh++) {
 		for (int j = 0; j < npart; j++) {
 			if (ineigh != j) {
 				glm::vec3 r = predict_p[ineigh].position - predict_p[j].position;
@@ -483,9 +476,9 @@ void Algorithm() {
 				}
 			}
 		}
-	}
-	//BuildHashTable(predict_p_list, hash_table);
-	//SetUpNeighborsLists(predict_p_list, hash_table);
+	}*/
+	BuildHashTable(predict_p, hash_table);
+	SetUpNeighborsLists(predict_p, hash_table);
 
 
 	int iter = 0;
